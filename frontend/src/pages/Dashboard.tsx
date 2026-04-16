@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import MetricCard from '../components/MetricCard';
 
 interface StatsResponse {

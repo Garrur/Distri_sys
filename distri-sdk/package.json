@@ -1,0 +1,35 @@
+{
+  "name": "distri-task-sdk",
+  "version": "1.0.0",
+  "description": "Minimal producer SDK for the Distributed Task Queue system.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "task",
+    "queue",
+    "distributed",
+    "redis",
+    "worker"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "ioredis": "^5.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^9.0.0",
+    "ioredis": "^5.0.0",
+    "uuid": "^9.0.0"
+  }
+}
