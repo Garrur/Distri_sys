@@ -39,25 +39,43 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleGenerateTask = async () => {
+    try {
+      await fetch('http://localhost:3000/jobs/test', { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to enqueue test job');
+    }
+  };
+
   if (loading && !stats) return <div style={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>Synchronizing Systems...</div>;
   if (!stats) return <div style={{ color: 'var(--accent-terra)' }}>Telemitry signal lost.</div>;
 
   return (
     <div style={{ maxWidth: '1200px', paddingBottom: '4rem' }}>
-      <header style={{ marginBottom: '5rem', paddingTop: '1rem' }}>
-        <h2 style={{ fontSize: '3.5rem', margin: 0, color: 'var(--text-main)' }}>
-          System Telemetry
-        </h2>
-        <p style={{ 
-          marginTop: '1.25rem', 
-          color: 'var(--text-muted)', 
-          maxWidth: '600px',
-          lineHeight: 1.7,
-          fontSize: '1.05rem',
-          fontWeight: 300
-        }}>
-          Real-time diagnostics tracking distributive performance thresholds, execution latency, and general structural integrity across the main event queue.
-        </p>
+      <header style={{ marginBottom: '5rem', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2 style={{ fontSize: '3.5rem', margin: 0, color: 'var(--text-main)' }}>
+            System Telemetry
+          </h2>
+          <p style={{ 
+            marginTop: '1.25rem', 
+            color: 'var(--text-muted)', 
+            maxWidth: '600px',
+            lineHeight: 1.7,
+            fontSize: '1.05rem',
+            fontWeight: 300
+          }}>
+            Real-time diagnostics tracking distributive performance thresholds, execution latency, and general structural integrity across the main event queue.
+          </p>
+        </div>
+        
+        <button 
+          className="btn-morphic" 
+          onClick={handleGenerateTask}
+          style={{ marginTop: '1rem' }}
+        >
+          Generate Task
+        </button>
       </header>
 
       <section style={{ 
