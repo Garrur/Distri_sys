@@ -27,16 +27,15 @@ export function getRedis(): Redis {
 }
 
 /**
- * Convenience alias so existing `import { redis }` style still works
- * through the getter on module.exports.
+ * Proxy object so existing `import { redis }` style still works
+ * while deferring actual connection until first use.
  */
-export let redis: Redis = null as unknown as Redis;
-
-Object.defineProperty(module.exports, 'redis', {
-  get: () => getRedis(),
-  set: (v: Redis) => { _instance = v; },
-  configurable: true,
-  enumerable: true,
+export const redis: Redis = new Proxy({} as Redis, {
+  get(target, prop, receiver) {
+    const client = getRedis();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  }
 });
 
 /**

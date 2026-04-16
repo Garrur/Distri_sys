@@ -8,11 +8,18 @@ import { WorkerPool } from './worker/WorkerPool';
 import { Watchdog } from './worker/Watchdog';
 import { Scheduler } from './scheduler/Scheduler';
 
+import cors from '@fastify/cors';
+
 const log = createLogger('Main');
 
 // ── Application bootstrap ────────────────────────────────────────────────────
 
 const fastify = Fastify({ logger: false }); // We use our own structured logger
+
+fastify.register(cors, { 
+  origin: '*', // Allow all origins for dev UI
+  methods: ['GET', 'POST']
+});
 
 const queue     = new Queue(config.queue.name);
 const pool      = new WorkerPool(config.queue.name, config.worker.concurrency);
