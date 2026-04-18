@@ -156,25 +156,24 @@ export default function Landing() {
         </header>
 
         <section className="section-small stats-bar" ref={statsRef}>
-          <div className="container stats-flex">
-            <div className="stat-item">
-              <div className="stat-num-container"><span className="stat-num">{stats.throughput.toLocaleString()}</span></div>
-              <span className="stat-label">jobs / sec peak throughput</span>
-            </div>
-            <div className="stat-divider"></div>
-            <div className="stat-item">
-              <div className="stat-num-container"><span className="stat-num">&lt; 4ms</span></div>
-              <span className="stat-label">p99 dispatch latency</span>
-            </div>
-            <div className="stat-divider"></div>
-            <div className="stat-item">
-              <div className="stat-num-container"><span className="stat-num">{stats.reliability.toFixed(2)}%</span></div>
-              <span className="stat-label">delivery reliability</span>
-            </div>
-            <div className="stat-divider"></div>
-            <div className="stat-item">
-              <div className="stat-num-container"><span className="stat-num">3</span></div>
-              <span className="stat-label">Redis primitives</span>
+          <div className="container">
+            <div className="stats-flex">
+              <div className="stat-item">
+                <div className="stat-num-container"><span className="stat-num">{stats.throughput.toLocaleString()}</span></div>
+                <span className="stat-label">jobs / sec peak throughput</span>
+              </div>
+              <div className="stat-item">
+                <div className="stat-num-container"><span className="stat-num">&lt; 4ms</span></div>
+                <span className="stat-label">p99 dispatch latency</span>
+              </div>
+              <div className="stat-item">
+                <div className="stat-num-container"><span className="stat-num">{stats.reliability.toFixed(2)}%</span></div>
+                <span className="stat-label">delivery reliability</span>
+              </div>
+              <div className="stat-item">
+                <div className="stat-num-container"><span className="stat-num">3</span></div>
+                <span className="stat-label">Redis primitives</span>
+              </div>
             </div>
           </div>
         </section>
