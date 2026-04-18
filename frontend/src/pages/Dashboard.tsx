@@ -16,6 +16,8 @@ interface StatsResponse {
   };
 }
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 export default function Dashboard() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,7 +25,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('http://localhost:3000/stats');
+        const response = await fetch(`${API_URL}/stats`);
         if (!response.ok) throw new Error('API Error');
         const data = await response.json();
         setStats(data);

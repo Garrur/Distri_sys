@@ -1,0 +1,35 @@
+services:
+  # 1. API Web Service
+  - type: web
+    name: distri-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: npm run start:api
+    autoDeploy: true
+    healthCheckPath: /stats
+    envVars:
+      - key: REDIS_HOST
+        sync: false # Set securely in Render UI
+      - key: REDIS_PORT
+        sync: false
+      - key: API_PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+
+  # 2. Background Worker Engine
+  - type: worker
+    name: distri-worker
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: npm run start:worker
+    autoDeploy: true
+    envVars:
+      - key: REDIS_HOST
+        sync: false # Set securely in Render UI
+      - key: REDIS_PORT
+        sync: false
+      - key: WORKER_CONCURRENCY
+        value: 10
+      - key: NODE_ENV
+        value: production

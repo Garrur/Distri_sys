@@ -1,8 +1,26 @@
 import { Redis } from 'ioredis';
+import fs from 'fs';
+import path from 'path';
 import { config } from '../../config';
 import { createLogger } from '../logger';
 
+declare module 'ioredis' {
+  interface Redis {
+    idempotentEnqueue(idempotencyKey: string, waitingListKey: string, jobId: string, ttl: string): Promise<string>;
+  }
+}
+
 const log = createLogger('Redis');
+
+function attachCommands(client: Redis): Redis {
+  const scriptPath = path.join(__dirname, 'scripts', 'idempotentEnqueue.lua');
+  const luaScript = fs.readFileSync(scriptPath, 'utf8');
+  client.defineCommand('idempotentEnqueue', {
+    numberOfKeys: 2,
+    lua: luaScript,
+  });
+  return client;
+}
 
 // ── Singleton instance ───────────────────────────────────────────────────────
 
@@ -22,6 +40,7 @@ export function getRedis(): Redis {
     });
     _instance.on('connect', () => log.info('Connected', { host: config.redis.host, port: config.redis.port }));
     _instance.on('error', (err) => log.error('Connection error', { error: String(err) }));
+    attachCommands(_instance);
   }
   return _instance;
 }
@@ -50,7 +69,7 @@ export function createBlockingClient(): Redis {
 
 /** Inject a test-provided Redis instance (call before any getRedis()). */
 export function overrideRedis(client: Redis): void {
-  _instance = client;
+  _instance = attachCommands(client);
 }
 
 /** Disconnect and clear the singleton. */

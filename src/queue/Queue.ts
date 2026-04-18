@@ -24,9 +24,22 @@ export class Queue {
   public async enqueue<T>(
     type: string,
     data: T,
-    priority: JobPriority = 'normal',
-    maxAttempts: number = 3,
-  ): Promise<Job<T>> {
+    optionsOrPriority?: JobPriority | { priority?: JobPriority; maxAttempts?: number; idempotencyKey?: string },
+    legacyMaxAttempts?: number
+  ): Promise<Job<T> | string> {
+    let priority: JobPriority = 'normal';
+    let maxAttempts = 3;
+    let idempotencyKey: string | undefined;
+
+    if (typeof optionsOrPriority === 'object' && optionsOrPriority !== null) {
+      priority = optionsOrPriority.priority ?? 'normal';
+      maxAttempts = optionsOrPriority.maxAttempts ?? 3;
+      idempotencyKey = optionsOrPriority.idempotencyKey;
+    } else if (typeof optionsOrPriority === 'string') {
+      priority = optionsOrPriority;
+      maxAttempts = legacyMaxAttempts ?? 3;
+    }
+
     const job: Job<T> = {
       id: uuidv4(),
       type,
@@ -39,9 +52,29 @@ export class Queue {
     };
 
     await saveJob(redis, job as Job);
-    await redis.lpush(RedisKeys.waitingList(this.queueName, priority), job.id);
 
-    log.info('Job enqueued', { jobId: job.id, type, priority });
+    if (idempotencyKey) {
+      const waitList = RedisKeys.waitingList(this.queueName, priority);
+      const idempotencyRedisKey = `idempotency:${idempotencyKey}`;
+      
+      const claimedId = await redis.idempotentEnqueue(
+        idempotencyRedisKey,
+        waitList,
+        job.id,
+        "86400"
+      );
+
+      if (claimedId !== job.id) {
+        log.info('Idempotency collision — job skipped', { originalId: job.id, claimedId, type, idempotencyKey });
+        // Clean up the orphaned job hash since we didn't actually push it to the waiting list
+        await redis.del(RedisKeys.jobHash(job.id));
+        return claimedId;
+      }
+    } else {
+      await redis.lpush(RedisKeys.waitingList(this.queueName, priority), job.id);
+    }
+
+    log.info('Job enqueued', { jobId: job.id, type, priority, idempotencyKey });
     return job;
   }
 

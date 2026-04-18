@@ -4,6 +4,9 @@
   "description": "Distributed task queue system",
   "main": "index.js",
   "scripts": {
+    "start": "node dist/src/index.js",
+    "start:api": "node dist/src/server.js",
+    "start:worker": "node dist/src/worker.js",
     "build": "tsc",
     "test": "jest --runInBand --forceExit"
   },
@@ -14,12 +17,14 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@testcontainers/redis": "^11.14.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.11.19",
     "@types/uuid": "^9.0.8",
     "jest": "^30.3.0",
     "testcontainers": "^11.14.0",
     "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"
   }

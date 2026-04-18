@@ -95,7 +95,51 @@ Our system uses a **Decoupled Heartbeat**:
 
 ---
 
-## 🛠️ 8. Installation Guide
+## 🧱 8. Architecture Decision Records (ADRs)
+
+### ADR-001: Why Redis LIST not SORTED SET for the main queue
+**Decision**: We use native Redis `LIST` structures (`queue:*:waiting:<priority>`) combined with `BRPOP` across multiple lists for priority routing, rather than a single `SORTED SET` (ZSET) scored by priority.
+**Alternatives considered**:
+*   A single Redis Sorted Set (`ZSET`) where the score represents priority (e.g., high=1, normal=2, low=3).
+*   Using a combination of Redis Streams (`XADD` / `XREADGROUP`).
+**Why we chose this**: Using a distinct `LIST` for each priority level allows us to leverage the `BRPOP` command's native left-to-right key evaluation (implemented in `src/worker/WorkerPool.ts` inside `workerLoop()`). When passing `[queue:high, queue:normal, queue:low]` to `BRPOP`, the Redis C-engine guarantees strict O(1) priority ordering with zero application-side sorting overhead and zero CPU spin-looping.
+**Trade-offs**: We gave up the ability to easily paginate or inspect the entire combined queue of waiting jobs chronologically, and adding dynamic priority levels involves modifying the block query list sequentially instead of just assigning a new arbitrary floating-point score.
+
+### ADR-002: Why BRPOP blocking dequeue not polling with setInterval
+**Decision**: Workers retrieve jobs using the blocking connection primitive `BRPOP` with a timeout of 0 (infinite block), rather than continuously polling the queue with `LPOP` or `ZRANGE` inside a `setInterval` loop.
+**Alternatives considered**:
+*   Polling `LPOP` every 100ms inside a JavaScript timer loop.
+*   Implementing long-polling via Redis Pub/Sub channels.
+**Why we chose this**: `BRPOP` drastically reduces network I/O and Redis CPU utilization by moving the wait state to the socket layer (manifesting in `src/worker/WorkerPool.ts`). Instead of bombarding the Redis server with tight-loop read commands when the queue is empty, the connection simply sleeps and Redis pushes the job immediately to the waiting socket the millisecond an `LPUSH` occurs in `src/queue/Queue.ts`, achieving sub-millisecond dispatch latency.
+**Trade-offs**: We gave up connection multiplexing. Because a blocked socket cannot execute other commands, each concurrent worker loop requires its own dedicated TCP connection, scaling Redis connections linearly with worker concurrency.
+
+### ADR-003: Why Lua scripts for job state transitions not MULTI/EXEC
+**Decision**: We handle idempotent queue insertions using an atomic Lua script (`src/lib/redis/scripts/idempotentEnqueue.lua`) rather than a transactional `MULTI`/`EXEC` block with `WATCH` in our TypeScript API.
+**Alternatives considered**:
+*   Using `WATCH idempotency:key`, yielding to `GET` phase, followed by a `MULTI` -> `SET` + `LPUSH` -> `EXEC` block.
+*   Checking existence via `GET` in generic Node.js logic and tolerating occasional duplicate enqueues.
+**Why we chose this**: A `MULTI/EXEC` transaction block tracking `WATCH` keys requires multiple network round-trips and is subject to optimistic concurrency failures requiring complex application-level retries. A Lua script executes as a single, uninterrupted blocking operation directly on the Redis engine, entirely eliminating Time-Of-Check to Time-Of-Use (TOCTOU) race conditions for concurrent producers executing `Queue.enqueue()` simultaneously with identical idempotency criteria.
+**Trade-offs**: We gave up slight performance scaling logic on the clustered Redis server level, as Lua scripts securely block the entire Redis single-threaded event loop while executing, necessitating that we keep the script specifically focused on fast O(1) operations (`SET NX` and `LPUSH`).
+
+### ADR-004: Why heartbeat TTL not job-level TTL for stall detection
+**Decision**: We detect crashed workers using a decoupled `heartbeat:<jobId>` key with a short TTL that the worker continuously renews in the background, rather than placing an expiration TTL directly on the job hash.
+**Alternatives considered**:
+*   Setting an absolute visibility timeout directly on the job payload in Redis upon dequeue.
+*   Relying purely on application-level TCP keepalives and socket drops.
+**Why we chose this**: A job-level TTL intrinsically conflates "slow execution" with "worker failure" (as structurally documented in `src/worker/Watchdog.ts`). By spawning an asynchronous `setInterval` to periodically refresh the string TTL during `WorkerPool.processJob()`, the `Watchdog` checking `MGET` comprehensively distinguishes true worker process crashes (where the event loop halts) from legitimately slow I/O-bound tasks that simply require extended time to resolve.
+**Trade-offs**: We gave up minimal Redis key sparsity. Tracking active execution securely requires managing two distinct footprints per active job (the `active_jobs:<queue>` hash tracker and the `heartbeat:<id>` string), subtly increasing memory footprint and maintaining background `SET/EX` traffic constraints.
+
+### ADR-005: Why separate Redis connections per worker not a shared connection
+**Decision**: We instantiate a dedicated `ioredis` TCP connection via `createBlockingClient()` for every concurrent worker process initialized by the `WorkerPool`, explicitly bypassing the primary shared application Redis client.
+**Alternatives considered**:
+*   Multiplexing all database commands onto a single global connection pool for the entire application interface.
+*   Routing blocking commands through generic unmanaged HTTP proxies.
+**Why we chose this**: The internal `workerLoop()` leverages `BRPOP` (in `src/worker/WorkerPool.ts`) to block the listener socket until work surfaces. Because `ioredis` transmits pipeline commands sequentially per socket context, invoking a blocking read on a shared connection queues all subsequent web/API commands (like `enqueue` or endpoint metrics) behind the locked socket indefinitely. Reserving unique isolated connections guarantees the core singleton remains totally unblocked targeting peak-throughput parallel operations context.
+**Trade-offs**: We gave up baseline connection frugality limit checks. Scaling a single Node.js instance to `concurrency=100` abruptly allocates 101 separate TCP Redis sockets, which can precipitously cross database `maxclients` deployment limits in heavily scaled multi-pod orchestration without an intermediary layer like Twemproxy.
+
+---
+
+## 🛠️ 9. Installation Guide
 
 ### Prerequisites
 *   **Node.js** (v18+)

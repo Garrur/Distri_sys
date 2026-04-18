@@ -11,6 +11,8 @@ interface Job {
   createdAt: number;
 }
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 export default function JobsList() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filter, setFilter] = useState<string>('waiting');
@@ -20,7 +22,7 @@ export default function JobsList() {
     const fetchJobs = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`http://localhost:3000/jobs?status=${filter}&limit=20`);
+        const response = await fetch(`${API_URL}/jobs?status=${filter}&limit=20`);
         if (!response.ok) throw new Error('API Error');
         const data = await response.json();
         setJobs(data.jobs || []);
@@ -38,7 +40,15 @@ export default function JobsList() {
 
   const handleRetry = async (id: string) => {
     try {
-      await fetch(`http://localhost:3000/jobs/${id}/retry`, { method: 'POST' });
+      await fetch(`${API_URL}/jobs/${id}/retry`, { method: 'POST' });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTestJob = async () => {
+    try {
+      await fetch(`${API_URL}/jobs/test`, { method: 'POST' });
     } catch (e) {
       console.error(e);
     }
@@ -53,9 +63,18 @@ export default function JobsList() {
           <h2 style={{ fontSize: '3.5rem', margin: 0, color: 'var(--text-main)', fontFamily: 'var(--font-serif)' }}>
             Task Register
           </h2>
-          <p style={{ marginTop: '1.25rem', color: 'var(--text-muted)', fontWeight: 300, fontSize: '1.05rem' }}>
-            Chronological log of pending and finalized operations.
-          </p>
+          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', marginTop: '1.25rem' }}>
+            <p style={{ margin: 0, color: 'var(--text-muted)', fontWeight: 300, fontSize: '1.05rem' }}>
+              Chronological log of pending and finalized operations.
+            </p>
+             <button 
+               className="btn-morphic" 
+               onClick={handleTestJob}
+               style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', letterSpacing: '0.05em' }}
+             >
+               + Inject Test Job
+             </button>
+          </div>
         </div>
 
         {/* Neumorphic Filter Navigation */}
