@@ -28,6 +28,9 @@ export interface Logger {
 }
 
 function emit(level: LogLevel, component: string, msg: string, ctx?: Record<string, unknown>): void {
+  // Support LOG_LEVEL=silent to suppress all output (useful for benchmarks / tests)
+  if (process.env.LOG_LEVEL === 'silent') return;
+
   const entry: LogEntry = {
     ts: new Date().toISOString(),
     level,
