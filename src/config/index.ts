@@ -59,7 +59,7 @@ function loadConfig(): QueueConfig {
       jitterMs: Number(process.env.BACKOFF_JITTER_MS) || 200,
     }),
     api: Object.freeze({
-      port: Number(process.env.API_PORT) || 3000,
+      port: Number(process.env.PORT || process.env.API_PORT) || 3000,
       host: process.env.API_HOST || '0.0.0.0',
     }),
   });
