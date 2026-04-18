@@ -1,8 +1,7 @@
 import { Redis } from 'ioredis';
-import fs from 'fs';
-import path from 'path';
 import { config } from '../../config';
 import { createLogger } from '../logger';
+import { idempotentEnqueueScript } from './scripts';
 
 declare module 'ioredis' {
   interface Redis {
@@ -13,11 +12,9 @@ declare module 'ioredis' {
 const log = createLogger('Redis');
 
 function attachCommands(client: Redis): Redis {
-  const scriptPath = path.join(__dirname, 'scripts', 'idempotentEnqueue.lua');
-  const luaScript = fs.readFileSync(scriptPath, 'utf8');
   client.defineCommand('idempotentEnqueue', {
     numberOfKeys: 2,
-    lua: luaScript,
+    lua: idempotentEnqueueScript,
   });
   return client;
 }
