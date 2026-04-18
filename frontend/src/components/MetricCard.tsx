@@ -27,18 +27,15 @@ export default function MetricCard({ title, value, subtitle, accent = 'default' 
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Subtle ambient glow behind the value for depth */}
+      {/* Brutalist status indicator block instead of a glow */}
       {accent !== 'default' && (
         <div style={{
           position: 'absolute',
-          top: '-20%',
-          right: '-10%',
-          width: '150px',
-          height: '150px',
-          background: `radial-gradient(circle, ${getAccentColor()} 0%, transparent 70%)`,
-          opacity: 0.1,
-          filter: 'blur(20px)',
-          pointerEvents: 'none'
+          top: 0,
+          right: 0,
+          width: '12px',
+          height: '12px',
+          background: getAccentColor()
         }} />
       )}
 
@@ -54,8 +51,9 @@ export default function MetricCard({ title, value, subtitle, accent = 'default' 
       
       <div style={{ marginTop: 'auto' }}>
         <div style={{
-          fontFamily: 'var(--font-serif)',
-          fontSize: '4rem',
+          fontFamily: 'var(--font-mono)',
+          fontWeight: 400,
+          fontSize: '3.5rem',
           lineHeight: '1',
           marginBottom: '0.75rem',
           color: getAccentColor()

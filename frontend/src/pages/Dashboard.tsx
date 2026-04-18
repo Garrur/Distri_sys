@@ -111,46 +111,47 @@ export default function Dashboard() {
       </section>
 
       {/* Queue state table */}
-      <section className="glass-panel" style={{ padding: '2.5rem' }}>
-        <h3 style={{ 
-          fontFamily: 'var(--font-sans)', 
-          fontSize: '0.85rem', 
-          textTransform: 'uppercase', 
-          letterSpacing: '0.1em', 
-          marginBottom: '2rem',
-          color: 'var(--text-muted)'
-        }}>
-          Active Partitions
-        </h3>
+      <section style={{ padding: '2.5rem', border: '1px solid var(--border-main)', background: 'var(--bg-dark)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-faint)' }}>
+          <h3 style={{ 
+            fontFamily: 'var(--font-sans)', 
+            fontSize: '0.85rem', 
+            textTransform: 'uppercase', 
+            letterSpacing: '0.1em', 
+            margin: 0,
+            color: 'var(--text-muted)'
+          }}>
+            Active Partitions
+          </h3>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--accent-terra)' }}>[SYS.Q]</span>
+        </div>
         
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '1rem'
+          gap: '2px', /* Tight telemetry grouping */
+          background: 'var(--border-faint)' /* creates 2px borders between rows */
         }}>
           {Object.entries(stats.queues).map(([key, value]) => (
             <div key={key} style={{
               display: 'flex',
               justifyContent: 'space-between',
-              padding: '1.5rem',
-              borderRadius: '12px',
-              backgroundColor: 'rgba(232, 225, 217, 0.02)',
-              alignItems: 'center',
-              boxShadow: 'var(--shadow-glass-inner)',
-              border: '1px solid rgba(255,255,255,0.02)'
+              padding: '1.25rem 1.5rem',
+              backgroundColor: 'var(--bg-dark-highest)',
+              alignItems: 'center'
             }}>
               <span style={{ 
                 fontFamily: 'var(--font-serif)', 
-                fontSize: '1.5rem', 
-                textTransform: 'capitalize',
-                color: 'var(--text-main)'
+                fontSize: '1.2rem', 
+                color: 'var(--text-main)',
+                letterSpacing: '0.02em'
               }}>
                 {key} Queue
               </span>
               <span style={{ 
-                fontFamily: 'var(--font-serif)', 
-                fontSize: '2rem', 
-                color: value > 0 && key === 'dead' ? 'var(--accent-terra)' : 'var(--text-main)' 
+                fontFamily: 'var(--font-mono)', 
+                fontSize: '1.75rem', 
+                color: value > 0 && key === 'dead' ? 'var(--accent-error)' : 'var(--text-main)' 
               }}>
                 {String(value).padStart(3, '0')}
               </span>

@@ -1,26 +1,29 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
 
 :root {
-  /* Warm Luxury Morphism */
-  --bg-dark: #0F0F0F;
-  --bg-dark-light: #161616;
+  /* Brutalist Technical Morphism */
+  --bg-dark: #0a0a0a;
+  --bg-dark-light: #111111;
+  --bg-dark-highest: #1a1a1a;
   
-  --glass-bg: rgba(232, 225, 217, 0.04);
-  --glass-border: rgba(255, 255, 255, 0.05);
+  --text-main: #f0ebe0;
+  --text-muted: #8a8070;
   
-  --text-main: #E8E1D9;
-  --text-muted: #8A8580;
-  
-  --accent-terra: #C75C2A;
-  --accent-olive: #6B705C;
-  --accent-gold: #D4AF37;
+  --accent-terra: #e8d5b0;
+  --accent-secondary: #c4a882;
+  --accent-error: #8b3a3a;
+  --accent-success: #4a7c59;
 
-  --font-serif: 'Playfair Display', serif;
-  --font-sans: 'Inter', sans-serif;
+  --border-main: #2a2520;
+  --border-faint: #1e1c18;
+
+  --font-serif: 'Playfair Display', 'Libre Baskerville', serif;
+  --font-sans: 'Inter', 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
   
-  --shadow-neumorphic-out: 4px 4px 10px rgba(0, 0, 0, 0.6), -2px -2px 8px rgba(255, 255, 255, 0.03);
-  --shadow-neumorphic-in: inset 4px 4px 8px rgba(0, 0, 0, 0.7), inset -2px -2px 6px rgba(255, 255, 255, 0.02);
-  --shadow-glass-inner: inset 0 1px 1px rgba(255, 255, 255, 0.06);
+  /* Hard Edges */
+  --shadow-inset: inset 0 1px 0 rgba(255,255,255,0.05);
+  --shadow-none: none;
 }
 
 * {
@@ -60,82 +63,74 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .text-terra { color: var(--accent-terra); }
-.text-olive { color: var(--accent-olive); }
-.text-gold { color: var(--accent-gold); }
+.text-olive { color: var(--accent-success); }
+.text-gold { color: var(--accent-secondary); }
 .text-muted { color: var(--text-muted); }
 
-/* Glass Elements */
+/* Structural Panels */
 .glass-panel {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-glass-inner), 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-  border-radius: 16px;
-  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  background: var(--bg-dark-light);
+  border: 1px solid var(--border-main);
+  box-shadow: var(--shadow-inset);
+  border-radius: 4px;
+  transition: border-color 0.2s ease;
 }
 
 .glass-panel:hover {
-  background: rgba(232, 225, 217, 0.06);
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--accent-terra);
 }
 
-/* Neumorphic Buttons */
+/* Hard Industrial Buttons */
 .btn-morphic {
   background: var(--bg-dark-light);
-  color: var(--text-main);
-  border: none;
-  border-radius: 12px;
+  color: var(--accent-terra);
+  border: 1px solid var(--accent-terra);
+  border-left: 3px solid var(--accent-terra);
+  border-radius: 0;
   padding: 0.75rem 1.5rem;
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-weight: 500;
   font-size: 0.85rem;
-  letter-spacing: 0.05em;
   cursor: pointer;
-  box-shadow: var(--shadow-neumorphic-out);
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   position: relative;
-  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
-.btn-morphic::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background: linear-gradient(135deg, rgba(232,225,217,0.05), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.btn-morphic:hover::before {
-  opacity: 1;
+.btn-morphic:hover {
+  background: rgba(232, 213, 176, 0.08); /* Amber faint */
 }
 
 .btn-morphic:active {
-  box-shadow: var(--shadow-neumorphic-in);
-  color: var(--accent-terra);
+  background: var(--accent-terra);
+  color: var(--bg-dark);
 }
 
 /* Nav Links */
 .nav-link {
   display: block;
   padding: 1rem 1.5rem;
-  border-radius: 12px;
+  border: 1px solid transparent;
+  border-radius: 0;
   text-decoration: none;
   color: var(--text-muted);
   font-family: var(--font-sans);
   font-size: 0.9rem;
-  letter-spacing: 0.05em;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .nav-link:hover {
   color: var(--text-main);
-  background: rgba(232, 225, 217, 0.02);
+  background: var(--bg-dark-light);
+  border-color: var(--border-main);
 }
 
 .nav-link.active {
-  color: var(--text-main);
-  background: var(--bg-dark-light);
-  box-shadow: var(--shadow-neumorphic-in);
+  color: var(--accent-terra);
+  background: var(--bg-dark-highest);
+  border: 1px solid var(--border-main);
+  border-left: 3px solid var(--accent-terra);
 }
