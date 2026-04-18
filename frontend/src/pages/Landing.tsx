@@ -2,13 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import './Landing.css';
 
-const mockLogs = [
-  '<span class="log-time">[12:04:01]</span> <span class="log-worker">WORKER-3</span> <span class="log-id">job:a1b2</span> <span class="status-dequeued">DEQUEUED</span> type=email',
-  '<span class="log-time">[12:04:01]</span> <span class="log-worker">WORKER-1</span> <span class="log-id">job:9f3c</span> <span class="status-completed">COMPLETED</span> 142ms',
-  '<span class="log-time">[12:04:02]</span> <span class="log-worker">WORKER-2</span> <span class="log-id">job:7e1a</span> <span class="status-failed">FAILED</span> attempt=1/3',
-  '<span class="log-time">[12:04:02]</span> <span class="log-worker">SCHEDULER</span> <span class="log-id">job:7e1a</span> <span class="status-retry">RETRY</span> delay=2000ms',
-  '<span class="log-time">[12:04:04]</span> <span class="log-worker">WORKER-3</span> <span class="log-id">job:7e1a</span> <span class="status-completed">COMPLETED</span> 98ms',
-];
 
 const features = [
   { icon: '⚡', title: 'Priority Queues', desc: 'Three dedicated Redis LISTs checked left-to-right. High-priority jobs always dequeued first with zero sorting overhead.' },
@@ -21,24 +14,10 @@ const features = [
 
 export default function Landing() {
   const [copied, setCopied] = useState(false);
-  const [logs, setLogs]     = useState<string[]>(mockLogs.slice(0, 3));
   const [stats, setStats]   = useState({ throughput: 0, reliability: 0 });
 
   const benchRef = useRef<HTMLDivElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
-
-  /* terminal scroll */
-  useEffect(() => {
-    let idx = 3;
-    const id = setInterval(() => {
-      setLogs(prev => {
-        const next = [...prev, mockLogs[idx % mockLogs.length]];
-        return next.length > 6 ? next.slice(next.length - 6) : next;
-      });
-      idx++;
-    }, 1600);
-    return () => clearInterval(id);
-  }, []);
 
   /* counters */
   useEffect(() => {

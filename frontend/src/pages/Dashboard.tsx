@@ -34,7 +34,7 @@ export default function Dashboard() {
   }, []);
 
   const handleGenerateTask = async () => {
-    try { await fetch(`${API_URL}/jobs/test`, { method: 'POST' }); } catch {}
+    try { await fetch(`${API_URL}/jobs/test`, { method: 'POST' }); } catch { /* silent */ }
   };
 
   if (loading && !stats) return (

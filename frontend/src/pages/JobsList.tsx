@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 interface Job {
-  id: string; type: string; data: any; status: string;
+  id: string; type: string; data: Record<string, unknown>; status: string;
   priority: string; attempts: number; maxAttempts: number; createdAt: number;
 }
 
@@ -39,8 +39,8 @@ export default function JobsList() {
     return () => clearInterval(id);
   }, [filter]);
 
-  const handleRetry   = async (id: string) => { try { await fetch(`${API_URL}/jobs/${id}/retry`, { method: 'POST' }); } catch {} };
-  const handleTestJob = async ()            => { try { await fetch(`${API_URL}/jobs/test`,        { method: 'POST' }); } catch {} };
+  const handleRetry   = async (id: string) => { try { await fetch(`${API_URL}/jobs/${id}/retry`, { method: 'POST' }); } catch { /* silent */ } };
+  const handleTestJob = async ()            => { try { await fetch(`${API_URL}/jobs/test`,        { method: 'POST' }); } catch { /* silent */ } };
 
   const badge = (s: string) => STATUS_BADGE[s] ?? STATUS_BADGE.waiting;
 
