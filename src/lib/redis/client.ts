@@ -32,13 +32,21 @@ let _instance: Redis | null = null;
  */
 export function getRedis(): Redis {
   if (!_instance) {
-    _instance = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-    });
-    _instance.on('connect', () => log.info('Connected', { host: config.redis.host, port: config.redis.port }));
+    if (config.redis.url) {
+      _instance = new Redis(config.redis.url, {
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+      });
+      _instance.on('connect', () => log.info('Connected to Redis Cloud via URL'));
+    } else {
+      _instance = new Redis({
+        host: config.redis.host,
+        port: config.redis.port,
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+      });
+      _instance.on('connect', () => log.info('Connected', { host: config.redis.host, port: config.redis.port }));
+    }
     _instance.on('error', (err) => log.error('Connection error', { error: String(err) }));
     attachCommands(_instance);
   }

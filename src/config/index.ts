@@ -5,6 +5,7 @@
 
 export interface QueueConfig {
   readonly redis: {
+    readonly url?: string;
     readonly host: string;
     readonly port: number;
   };
@@ -35,6 +36,7 @@ export interface QueueConfig {
 function loadConfig(): QueueConfig {
   return Object.freeze({
     redis: Object.freeze({
+      url: process.env.REDIS_URL,
       host: process.env.REDIS_HOST || '127.0.0.1',
       port: Number(process.env.REDIS_PORT) || 6379,
     }),
