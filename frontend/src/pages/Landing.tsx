@@ -184,7 +184,7 @@ export default function Landing() {
             <h2>No magic. Just Redis.</h2>
           </div>
           
-          <div className="arch-diagram">
+          <div className="arch-diagram" style={{ paddingBottom: '300px' }}>
             <div className="arch-row">
               <div className="arch-node-generic">Producer</div>
               <div className="arch-arrow-x"></div>
@@ -192,28 +192,29 @@ export default function Landing() {
                 <span className="arch-type">LIST</span> <span className="arch-key">queue:high</span>
               </div>
               <div className="arch-arrow-x"></div>
-              <div className="arch-node-worker">Worker Pool</div>
+              <div style={{ position: 'relative' }}>
+                <div className="arch-node-worker">Worker Pool</div>
+                <div className="arch-down-branch">
+                  <div className="arch-arrow-y"></div>
+                  <div className="arch-node-redis" style={{ marginBottom: '8px' }}>
+                    <span className="arch-type">HASH</span> <span className="arch-key">active_jobs</span>
+                  </div>
+                  <div className="arch-arrow-y">
+                    <span className="arch-pill">on failure</span>
+                  </div>
+                  <div className="arch-node-redis" style={{ marginBottom: '8px' }}>
+                    <span className="arch-type">ZSET</span> <span className="arch-key">delayed</span>
+                  </div>
+                  <div className="arch-arrow-y">
+                    <span className="arch-pill">max attempts</span>
+                  </div>
+                  <div className="arch-node-redis">
+                    <span className="arch-type">LIST</span> <span className="arch-key">dead_letter</span>
+                  </div>
+                </div>
+              </div>
               <div className="arch-arrow-x"></div>
               <div className="arch-node-generic">Completed</div>
-            </div>
-            
-            <div className="arch-down-branch">
-              <div className="arch-arrow-y"></div>
-              <div className="arch-node-redis" style={{ marginBottom: '8px' }}>
-                <span className="arch-type">HASH</span> <span className="arch-key">active_jobs</span>
-              </div>
-              <div className="arch-arrow-y">
-                <span className="arch-pill">on failure</span>
-              </div>
-              <div className="arch-node-redis" style={{ marginBottom: '8px' }}>
-                <span className="arch-type">ZSET</span> <span className="arch-key">delayed</span>
-              </div>
-              <div className="arch-arrow-y">
-                <span className="arch-pill">max attempts</span>
-              </div>
-              <div className="arch-node-redis">
-                <span className="arch-type">LIST</span> <span className="arch-key">dead_letter</span>
-              </div>
             </div>
           </div>
 
