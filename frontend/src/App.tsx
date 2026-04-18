@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
+import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import JobsList from './pages/JobsList';
 import './index.css';
@@ -35,10 +36,10 @@ function Sidebar() {
           </h1>
           
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <NavLink to="/" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <NavLink to="/dashboard" end className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
               System Overview
             </NavLink>
-            <NavLink to="/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
+            <NavLink to="/dashboard/jobs" className={({isActive}) => `nav-link ${isActive ? 'active' : ''}`}>
               Task Register
             </NavLink>
           </nav>
@@ -56,9 +57,9 @@ function Sidebar() {
   );
 }
 
-function App() {
+function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <Router>
+    <>
       <div className="grain-overlay" aria-hidden="true" />
       
       {/* Decorative background blurs to enhance glass effect without neon */}
@@ -80,12 +81,21 @@ function App() {
           marginLeft: '320px',
           padding: '3rem 4rem',
         }}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/jobs" element={<JobsList />} />
-          </Routes>
+          {children}
         </main>
       </div>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/dashboard" element={<DashboardLayout><Dashboard /></DashboardLayout>} />
+        <Route path="/dashboard/jobs" element={<DashboardLayout><JobsList /></DashboardLayout>} />
+      </Routes>
     </Router>
   );
 }
