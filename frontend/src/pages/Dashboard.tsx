@@ -43,7 +43,7 @@ export default function Dashboard() {
 
   const handleGenerateTask = async () => {
     try {
-      await fetch('http://localhost:3000/jobs/test', { method: 'POST' });
+      await fetch(`${API_URL}/jobs/test`, { method: 'POST' });
     } catch (e) {
       console.error('Failed to enqueue test job');
     }
