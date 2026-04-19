@@ -528,3 +528,593 @@ In one paragraph:
 ---
 
 *Made with 💙 — Distri Distributed Task Queue*
+
+---
+
+## 📖 Part 16: Glossary — Every Word Explained
+
+If you ever get confused by a word in this doc or in a conversation about this project, look it up here.
+
+| Word | Plain English Meaning |
+|------|-----------------------|
+| **Queue** | A line where things wait to be processed. Like a checkout line at a store. |
+| **Job** | One single task. "Send email to Bob" = one job. |
+| **Worker** | Code that picks up a job and actually does it. Like an employee. |
+| **Worker Pool** | A group of workers running at the same time. Like hiring 5 employees. |
+| **Redis** | A super-fast, in-memory storage system. Like a whiteboard inside the computer. |
+| **LPUSH** | A Redis command: push an item to the **Left** (front) of a list. |
+| **RPOPLPUSH** | A Redis command: pop from the **Right** of list A, push to list B — in one instant. |
+| **BRPOP** | An old Redis command: **block** (wait) until something appears in a list, then pop it. We moved away from this. |
+| **Atomic** | Happens all-or-nothing. No "halfway". |
+| **TTL (Time To Live)** | An expiry timer on a Redis key. When the timer hits zero, the key is automatically deleted. |
+| **Heartbeat** | A signal sent repeatedly to prove "I'm still alive". Like a pulse. |
+| **Watchdog** | A background process that checks heartbeats and rescues stuck jobs. |
+| **Scheduler** | A timer that moves delayed jobs back to the active queue when their wait time is up. |
+| **Dead Letter Queue (DLQ)** | A special holding area for jobs that failed too many times. Needs a human to inspect. |
+| **Idempotent** | Safe to repeat. "Send email to Bob" twice results in only one email if done correctly. |
+| **Exponential Backoff** | Waiting longer and longer between retries (2s, 4s, 8s…). Prevents hammering a broken system. |
+| **Jitter** | Adding a random amount to your wait time so multiple workers don't all retry at the exact same moment. |
+| **Prometheus** | A monitoring tool that collects and stores numeric metrics over time. |
+| **Lua Script** | A tiny program that runs inside Redis itself, fully atomic. |
+| **MULTI/EXEC** | Redis's built-in transaction system. Less powerful than Lua for reads+writes. |
+| **MGET** | A Redis command to fetch many keys in one single network call. Very efficient. |
+| **Pipeline** | Sending multiple Redis commands at once in a batch, instead of one by one. Saves network time. |
+| **UUID** | A Universally Unique ID. A long random string like `abc-123-def-456`. Used as job IDs. |
+| **Hash (Redis)** | A Redis structure that stores multiple fields with values. Like a row in a table. Used to store job details. |
+| **List (Redis)** | A Redis structure that stores an ordered sequence of strings. Used for our queues. |
+| **ZSET / Sorted Set (Redis)** | A Redis structure like a list but every item has a numeric score. Used for delayed jobs (scored by "run at" timestamp). |
+| **Fastify** | A fast Node.js web framework. Used for our `/stats`, `/metrics`, `/jobs` API endpoints. |
+| **TypeScript** | JavaScript but with types. Like writing JavaScript with guardrails that catch typos. |
+| **prom-client** | A Node.js library for reporting Prometheus metrics. |
+| **Testcontainers** | A testing tool that automatically starts Docker containers (like Redis) just for a test, then destroys them. |
+| **concurrency** | How many workers can run at the same time. `concurrency: 5` = 5 workers running in parallel. |
+| **TOCTOU** | "Time of Check to Time of Use" — a bug where you check something, then someone else changes it before you act on your check. |
+| **Race condition** | When two things happen at the same time and interfere with each other in unexpected ways. |
+| **At-least-once delivery** | A guarantee that a job will run *at least* one time, possibly more. Vs "exactly-once" which is much harder. |
+| **p99 latency** | The 99th percentile latency. It means 99% of operations are faster than this number. | 
+
+---
+
+## 🗂️ Part 17: What Does Redis Actually Store?
+
+This is the exact data sitting inside Redis while the system runs. Seeing it makes everything clearer.
+
+### When a job is waiting (not picked up yet)
+
+```
+Redis List:   "queue:email_service:waiting:normal"
+  → ["abc-123", "def-456", "ghi-789"]     ← ticket numbers in the line
+
+Redis Hash:   "job:abc-123"
+  → {
+      id:          "abc-123",
+      type:        "send_email",
+      data:        '{"to":"bob@test.com"}',
+      status:      "waiting",
+      priority:    "normal",
+      attempts:    "0",
+      maxAttempts: "3",
+      createdAt:   "1713521400000"
+    }
+```
+
+### When a worker picks it up
+
+```
+Redis List:   "queue:email_service:processing"
+  → ["abc-123"]                           ← moved here atomically via RPOPLPUSH
+
+Redis Hash:   "job:abc-123"
+  → { ...same as above..., status: "active" }
+
+Redis Hash:   "active_jobs:email_service"
+  → { "abc-123": '{"workerId":1,"startedAt":1713521400123,"timeout":30000}' }
+
+Redis String: "heartbeat:abc-123"           ← expires in 10 seconds!
+  → "1"                                   ← worker keeps renewing this
+```
+
+### When it succeeds
+
+```
+All temporary keys are DELETED:
+  ✗ "heartbeat:abc-123"         (deleted)
+  ✗ "active_jobs:email_service" → "abc-123" field deleted
+
+Redis Hash:   "job:abc-123"
+  → { ...same..., status: "completed" }
+
+Redis String: "jobs_processed_total"
+  → "1"                                   ← incremented by 1
+```
+
+### When it fails and retries
+
+```
+Redis ZSET:   "queue:email_service:delayed"
+  → { "abc-123" : 1713521432000 }         ← score = timestamp to retry at
+
+Redis Hash:   "job:abc-123"
+  → { ...same..., status: "delayed", attempts: "1" }
+```
+
+### When it dies permanently
+
+```
+Redis List:   "queue:email_service:dead"
+  → ["abc-123"]
+
+Redis Hash:   "job:abc-123"
+  → { ...same..., status: "dead", attempts: "3" }
+```
+
+**Key takeaway:** A job ID travels through these lists and its status changes. The actual job data never duplicates — only the ID moves around. The hash stays constant.
+
+---
+
+## 🎓 Part 18: Hands-On Tutorial — Add Your Own Job Type in 5 Minutes
+
+Let's say you want to add a new job type: **"resize image"**. Here's exactly what you'd do.
+
+### Step 1: Define what your handler does
+
+Create or edit a file in your app (not in the distri core):
+
+```typescript
+// myApp/handlers/image-handler.ts
+
+import { Job } from '../src/types';
+
+export async function resizeImageHandler(job: Job) {
+  const { imagePath, width, height } = job.data as {
+    imagePath: string;
+    width: number;
+    height: number;
+  };
+
+  console.log(`Resizing ${imagePath} to ${width}x${height}...`);
+
+  // Your actual image resizing logic here
+  // e.g. using sharp library: await sharp(imagePath).resize(width, height).toFile(...)
+
+  console.log('Done! ✅');
+}
+```
+
+### Step 2: Register the handler with a WorkerPool
+
+```typescript
+// myApp/server.ts
+
+import { Queue } from './src/queue/Queue';
+import { WorkerPool } from './src/worker/WorkerPool';
+import { resizeImageHandler } from './handlers/image-handler';
+
+const queue = new Queue('media_processing');
+const pool = new WorkerPool('media_processing', 3); // 3 workers
+
+// Tell the pool: "When you see a job of type 'resize_image', run this function"
+pool.process('resize_image', resizeImageHandler);
+
+// Start the workers
+await pool.start();
+```
+
+### Step 3: Enqueue a job from anywhere in your app
+
+```typescript
+// Somewhere in your API route, after a user uploads a photo:
+
+await queue.enqueue(
+  'resize_image',                    // job type
+  {                                  // job data
+    imagePath: '/uploads/photo.jpg',
+    width: 800,
+    height: 600,
+  },
+  'normal',                          // priority (high/normal/low)
+  3                                  // max retry attempts
+);
+
+// Your API can instantly respond to the user.
+// The actual resizing happens in the background!
+```
+
+### Step 4: Watch it happen in the API
+
+Open your browser to `http://localhost:3000/stats` and you'll see the queue depth change as the job is picked up and processed.
+
+**That's it.** ✅ You just added a fully reliable, crash-safe, retryable background job to your application.
+
+---
+
+## 🚨 Part 19: Common Mistakes (And How To Avoid Them)
+
+Even experienced engineers make these mistakes. Learn them early.
+
+---
+
+### ❌ Mistake 1: Your handler does something that can't be repeated
+
+```typescript
+// BAD — sends duplicate emails if job runs twice
+pool.process('send_email', async (job) => {
+  await sendEmail(job.data.to, 'Welcome!');
+});
+
+// GOOD — check if email was already sent before sending
+pool.process('send_email', async (job) => {
+  const alreadySent = await db.find({ jobId: job.id });
+  if (alreadySent) return; // skip if done already
+  await sendEmail(job.data.to, 'Welcome!');
+  await db.save({ jobId: job.id, sentAt: Date.now() });
+});
+```
+
+**Why:** The system guarantees *at-least-once* delivery. A job might run twice in edge cases (worker crash right after completion). Always make your handlers safe to repeat.
+
+---
+
+### ❌ Mistake 2: Putting giant data inside a job
+
+```typescript
+// BAD — storing a 10MB image buffer inside Redis
+await queue.enqueue('process_image', {
+  imageBuffer: fs.readFileSync('/path/to/huge-image.jpg'), // 10MB!
+});
+
+// GOOD — store just the path/reference
+await queue.enqueue('process_image', {
+  imagePath: '/path/to/huge-image.jpg', // tiny string ✅
+});
+```
+
+**Why:** Redis lives in RAM. Storing large payloads wastes expensive memory and slows down every Redis command. Store references (file paths, database IDs, URLs), not the raw data.
+
+---
+
+### ❌ Mistake 3: Forgetting to start the Watchdog and Scheduler
+
+```typescript
+// BAD — workers run, but stalled jobs are never rescued
+//      and delayed jobs are never retried
+const pool = new WorkerPool('emails', 3);
+pool.process('send_email', handler);
+await pool.start();
+
+// GOOD — run all three together
+const pool      = new WorkerPool('emails', 3);
+const watchdog  = new Watchdog('emails');
+const scheduler = new Scheduler('emails');
+
+pool.process('send_email', handler);
+
+watchdog.start();   // 👈 detects crashed workers
+scheduler.start();  // 👈 retries delayed jobs
+await pool.start();
+```
+
+---
+
+### ❌ Mistake 4: Using the wrong priority for everything
+
+```typescript
+// BAD — everything is HIGH PRIORITY (defeats the purpose)
+await queue.enqueue('send_newsletter', data, 'high');
+await queue.enqueue('resize_photo', data, 'high');
+await queue.enqueue('generate_report', data, 'high');
+
+// GOOD — reserve HIGH for things users are actively waiting for
+await queue.enqueue('send_password_reset', data, 'high');   // user is locked out!
+await queue.enqueue('send_newsletter', data, 'low');        // nobody is waiting
+await queue.enqueue('resize_photo', data, 'normal');        // moderate urgency
+```
+
+**Why:** If everything is HIGH priority, nothing is. Reserve HIGH for jobs where a real user is staring at a loading screen.
+
+---
+
+### ❌ Mistake 5: Not handling errors in your handler
+
+```typescript
+// BAD — crash will bubble up incorrectly
+pool.process('send_email', async (job) => {
+  const result = await emailAPI.send(job.data); // what if this throws?
+});
+
+// GOOD — decide what a failure means
+pool.process('send_email', async (job) => {
+  try {
+    await emailAPI.send(job.data);
+  } catch (err) {
+    // Throwing = tell the queue to retry this job later
+    throw new Error(`Email API failed: ${err.message}`);
+  }
+});
+```
+
+**Why:** If your handler throws, the queue system catches it, increments the attempt count, schedules a retry, and eventually sends it to the DLQ. This is exactly what you want. If you silently swallow the error, the job is marked "completed" even though it failed.
+
+---
+
+## 🔬 Part 20: A Day in the Life — Story Mode
+
+Let's walk through an entire day using the system as a story.
+
+---
+
+**9:00 AM — The website opens for the day.**
+
+The server starts. Workers wake up. The Watchdog and Scheduler begin their patrols.
+
+```
+Watchdog checks: "Any stalled jobs from last night?" → None. ✅
+Scheduler checks: "Any delayed jobs due for retry?" → None. ✅
+Workers:          "Waiting for work..."              💤
+```
+
+---
+
+**9:15 AM — A user signs up.**
+
+```
+User clicks "Sign Up" button
+↓
+API saves user to database
+↓
+API calls: queue.enqueue("send_welcome_email", { to: "sara@test.com" }, "normal", 3)
+↓
+Job created: #job-111 → saved to Redis
+↓
+"queue:myapp:waiting:normal" → ["job-111"]
+↓
+API responds to user: "Welcome, Sara!" in < 1ms ⚡
+```
+
+---
+
+**9:15:00.004 AM (4 milliseconds later) — A worker sees the job.**
+
+```
+Worker 1 calls RPOPLPUSH
+↓
+"job-111" moves from WAITING → PROCESSING list (atomically!)
+↓
+Heartbeat "heartbeat:job-111" set for 10 seconds
+↓
+Worker reads job data → sends welcome email to sara@test.com 📧
+↓
+Email sent! ✅
+↓
+Job status → "completed"
+Processing list cleared
+Heartbeat key deleted
+stats incremented: jobs_processed_total = 1
+```
+
+---
+
+**10:30 AM — A report generation job fails.**
+
+```
+Job "generate_monthly_report" picked up by Worker 2
+↓
+PDF library crashes: "Out of memory" error 💥
+↓
+Worker marks attempt: 1 of 3
+Job status → "delayed"
+Retry scheduled for 10:30:02 AM (2 second backoff)
+
+10:30:02 AM → Scheduler moves job back to waiting
+Worker 2 picks it up again
+PDF library crashes: "Out of memory" again 💥
+Attempt: 2 of 3 — retry in 4 seconds
+
+10:30:06 AM → Scheduler moves job back to waiting
+Worker 3 picks it up
+PDF library crashes again 💥
+Attempt: 3 of 3 — NO MORE RETRIES
+
+Job status → "dead" ☠️
+Moved to dead-letter queue
+```
+
+---
+
+**11:00 AM — A worker container crashes in production.**
+
+```
+Worker 4 was processing "send_invoice" job #job-999
+Container gets killed by Kubernetes (out of memory)
+↓
+Heartbeat for job-999 stops renewing
+TTL countdown: 10s... 5s... 0s ← heartbeat key expires in Redis
+
+11:00:10 AM → Watchdog checks all heartbeats using MGET
+"heartbeat:job-999" → NULL (key no longer exists!)
+↓
+Watchdog: "job-999 is stalled!"
+↓
+Watchdog looks at the PROCESSING list → finds "job-999"
+Removes it from processing list
+Puts it back in the NORMAL waiting list
+Increments attempts: 0 → 1
+Status → "waiting"
+↓
+Worker 1 picks up job-999 and successfully sends the invoice ✅
+```
+
+---
+
+**11:30 AM — A developer checks the dashboard.**
+
+```
+GET /stats →
+{
+  "queues": {
+    "high":    0,
+    "normal":  2,      ← 2 jobs waiting
+    "low":     14,     ← 14 low-priority jobs queued up
+    "delayed": 0,
+    "dead":    1       ← that failed report from 10:30 AM
+  },
+  "metrics": {
+    "jobs_processed_total": 847,
+    "jobs_failed_total":    3,
+    "avg_processing_time_ms": 142
+  }
+}
+
+Developer sees 1 dead job → manually retries it via POST /jobs/job-XYZ/retry
+```
+
+---
+
+**End of day.** System has processed 847 jobs, recovered 1 crashed worker's job automatically, and sent 1 job to the DLQ for human review. Everything logged, everything observable, nothing lost.
+
+---
+
+## 🧱 Part 21: Understanding the Priority System In Detail
+
+Here is exactly how the 3-priority-list system works.
+
+### How jobs are sorted into groups
+
+```
+Producer calls: queue.enqueue('type', data, 'high')
+                                              ↑
+                              This goes into "queue:myapp:waiting:high"
+
+Producer calls: queue.enqueue('type', data, 'normal')
+                                              ↑
+                              This goes into "queue:myapp:waiting:normal"
+
+Producer calls: queue.enqueue('type', data, 'low')
+                                              ↑
+                              This goes into "queue:myapp:waiting:low"
+```
+
+### How workers choose which job to grab
+
+The worker pool iterates through priorities **in strict order**:
+
+```typescript
+// src/worker/WorkerPool.ts (simplified)
+
+const keys = ['queue:myapp:waiting:high', 'queue:myapp:waiting:normal', 'queue:myapp:waiting:low'];
+
+for (const listKey of keys) {
+  const jobId = await redis.rpoplpush(listKey, processingList);
+  if (jobId) {
+    // Found a job! Process it.
+    break; // don't check lower priority lists
+  }
+}
+// If no keys had anything → sleep 100ms and try again
+```
+
+**What this means in practice:**
+
+```
+HIGH list:   [urgent-1, urgent-2]
+NORMAL list: [mail-1, mail-2, mail-3]
+LOW list:    [report-1, report-2]
+
+Worker checks HIGH → picks up urgent-1
+Worker checks HIGH → picks up urgent-2
+Worker checks HIGH → empty!
+Worker checks NORMAL → picks up mail-1
+Worker checks HIGH → empty!
+Worker checks NORMAL → picks up mail-2
+...and so on
+
+LOW jobs only get processed when both HIGH and NORMAL are completely empty.
+```
+
+---
+
+## 💾 Part 22: The Config File — All The Knobs
+
+**File:** `src/config/index.ts`
+
+Think of this like the settings panel. Here are the key settings and what they mean:
+
+| Setting | Default | What It Does |
+|---------|---------|--------------|
+| `worker.concurrency` | 5 | How many workers run at once |
+| `worker.heartbeatTtlSec` | 10 | Heartbeat key expires after this many seconds |
+| `worker.heartbeatIntervalMs` | 5000 | How often the worker renews its heartbeat (5s) |
+| `watchdog.intervalMs` | 15000 | How often the Watchdog looks for stalled jobs (15s) |
+| `scheduler.intervalMs` | 1000 | How often the Scheduler checks for delayed jobs ready to retry (1s) |
+| `backoff.maxDelayMs` | 30000 | Max time to wait between retries (30s) |
+| `backoff.jitterMs` | 1000 | Random extra time added to prevent thundering herd |
+
+**Example:** If `heartbeatTtlSec = 10` and `watchdog.intervalMs = 15000`:
+- A crashed worker's heartbeat expires after 10 seconds
+- The Watchdog notices ~15 seconds after the last check
+- So a job could be stuck for up to 25 seconds before the Watchdog rescues it
+
+In production you'd tune these based on your job execution times.
+
+---
+
+## 🔑 Part 23: Every Redis Key Explained
+
+All key names are defined in one single file (`src/lib/redis/keys.ts`) so they never drift or typo.
+
+| Key Pattern | Type | Stores | Example |
+|-------------|------|--------|---------|
+| `job:<id>` | Hash | Full job metadata (type, data, status, attempts…) | `job:abc-123` |
+| `queue:<name>:waiting:high` | List | IDs of high-priority jobs waiting | `["id1","id2"]` |
+| `queue:<name>:waiting:normal` | List | IDs of normal-priority jobs waiting | `["id3","id4"]` |
+| `queue:<name>:waiting:low` | List | IDs of low-priority jobs waiting | `["id5"]` |
+| `queue:<name>:processing` | List | IDs of jobs currently being worked on | `["id1"]` |
+| `queue:<name>:delayed` | Sorted Set | Job IDs scored by "retry at" timestamp | `{id3: 1713521432000}` |
+| `queue:<name>:dead` | List | IDs of permanently failed jobs | `["id99"]` |
+| `active_jobs:<name>` | Hash | Maps jobId → worker info (who's working on it) | `{id1: '{"workerId":2}'}` |
+| `heartbeat:<id>` | String (with TTL) | Proof that the worker is alive. Expires in 10s | `"1"` |
+| `jobs_processed_total` | String (counter) | Running total of completed jobs | `"847"` |
+| `jobs_failed_total` | String (counter) | Running total of failed attempts | `"23"` |
+| `processing_time_sum_ms` | String (counter) | Sum of all processing times (for average calc) | `"120441"` |
+| `idempotency:<key>` | String (with TTL) | Holds the job ID for a given idempotency key | `"abc-123"` |
+
+---
+
+## 🏆 Part 24: Why This Project Is Impressive For a Resume
+
+This isn't just a "to-do list app". Here's what this project demonstrates you understand:
+
+### Distributed Systems Concepts
+- ✅ **At-least-once delivery** — you know why "exactly-once" is a hard problem
+- ✅ **Crash recovery** — you built automatic recovery, not just hope for no crashes
+- ✅ **Race conditions** — you identified and fixed the Pop-Crash race condition
+- ✅ **Atomic operations** — you know why RPOPLPUSH is safe but RPOP+LPUSH is not
+
+### Redis Mastery
+- ✅ **5 different Redis data types**: String, List, Sorted Set, Hash, String-as-counter
+- ✅ **Lua scripting** built into Redis for atomic conditional operations
+- ✅ **Heartbeat pattern** — a classic distributed systems primitive
+- ✅ **Dead letter queues** — standard production pattern
+
+### Production Engineering
+- ✅ **Prometheus metrics** with histograms, counters, and gauges
+- ✅ **Graceful shutdown** — workers finish current jobs before stopping
+- ✅ **Exponential backoff with jitter** — prevents thundering herd
+- ✅ **Structured JSON logging** — production-grade observability
+- ✅ **TypeScript** with full type safety
+
+### Testing Best Practices
+- ✅ **Real integration tests** against actual Redis (no mocks)
+- ✅ **Testcontainers** for reproducible CI/CD environments
+- ✅ **10/10 tests passing** covering all failure scenarios
+
+### Interview Talking Points
+When an interviewer asks *"Tell me about a complex technical problem you solved"*, you can say:
+
+> *"I identified a critical race condition in the dequeue logic — using BRPOP meant a job could be permanently lost if the worker crashed between the pop and the status update. I solved it by migrating to RPOPLPUSH which atomically moves the job to a 'processing' list, guaranteeing it always exists somewhere in Redis. Then I updated the Watchdog to monitor both the active hash and this processing list, so crashed-worker jobs are always rescued."*
+
+That answer demonstrates you understand atomicity, data loss scenarios, monitoring, and graceful degradation — all senior-level concepts.
+
+---
+
+*Made with 💙 — Distri Distributed Task Queue*
