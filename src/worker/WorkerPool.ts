@@ -1,11 +1,11 @@
-import { Redis } from 'ioredis';
-import { redis as sharedRedis, createBlockingClient } from '../lib/redis/client';
+import { redis as sharedRedis } from '../lib/redis/client';
 import { RedisKeys } from '../lib/redis/keys';
 import { deserializeJob, updateJobFields } from '../lib/redis/job-store';
 import { Job, JobHandler, ActiveJobEntry, PRIORITIES } from '../types';
 import { HandlerNotRegisteredError } from '../errors';
 import { config } from '../config';
 import { createLogger } from '../lib/logger';
+import { distriJobsCompletedTotal, distriJobsFailedTotal, distriJobsProcessingDuration } from '../api/metrics';
 
 const log = createLogger('WorkerPool');
 
@@ -36,7 +36,7 @@ export class WorkerPool {
   private isRunning = false;
   private runningJobCount = 0;
   private readonly handlers = new Map<string, JobHandler>();
-  private readonly blockingClients: Redis[] = [];
+  private readonly workerPromises: Promise<void>[] = [];
 
   constructor(
     private readonly queueName: string,
@@ -54,32 +54,20 @@ export class WorkerPool {
     this.isRunning = true;
     log.info('Starting workers', { concurrency: this.concurrency, queue: this.queueName });
 
-    const workers: Promise<void>[] = [];
     for (let i = 0; i < this.concurrency; i++) {
-      workers.push(this.workerLoop(i + 1));
+      this.workerPromises.push(this.workerLoop(i + 1));
     }
-    Promise.all(workers).catch((err) =>
+    Promise.all(this.workerPromises).catch((err) =>
       log.error('Critical worker failure', { error: String(err) }),
     );
   }
 
-  /**
-   * Graceful shutdown: stop loops → wait for in-flight jobs → disconnect
-   * blocking clients. Does NOT close the shared Redis client (that's the
-   * caller's responsibility).
-   */
   public async shutdown(): Promise<void> {
     log.info('Initiating shutdown');
     this.isRunning = false;
 
-    for (const c of this.blockingClients) c.disconnect();
-    this.blockingClients.length = 0;
-
-    await new Promise<void>((resolve) => {
-      const id = setInterval(() => {
-        if (this.runningJobCount === 0) { clearInterval(id); resolve(); }
-      }, 50);
-    });
+    await Promise.allSettled(this.workerPromises);
+    this.workerPromises.length = 0;
 
     log.info('Shutdown complete');
   }
@@ -87,17 +75,23 @@ export class WorkerPool {
   // ── Private ──────────────────────────────────────────────────────────────
 
   private async workerLoop(workerId: number): Promise<void> {
-    const client = createBlockingClient();
-    this.blockingClients.push(client);
-
+    const processList = RedisKeys.processingList(this.queueName);
     const keys = PRIORITIES.map((p) => RedisKeys.waitingList(this.queueName, p));
 
     while (this.isRunning) {
       try {
-        const result = await client.brpop(...keys, 0);
-        if (!result || !this.isRunning) continue;
+        let jobId: string | null = null;
+        // Priority polling using atomic LMOVE to processList to prevent Pop-Crash race
+        for (const listKey of keys) {
+          jobId = await sharedRedis.rpoplpush(listKey, processList);
+          if (jobId) break;
+        }
 
-        const [, jobId] = result;
+        if (!jobId) {
+          if (this.isRunning) await new Promise((r) => setTimeout(r, 100));
+          continue;
+        }
+
         this.runningJobCount++;
         try {
           await this.processJob(jobId, workerId);
@@ -111,8 +105,6 @@ export class WorkerPool {
         }
       }
     }
-
-    if (client.status === 'ready') client.disconnect();
   }
 
   private async processJob(jobId: string, workerId: number): Promise<void> {
@@ -156,15 +148,22 @@ export class WorkerPool {
       pipe.incrby(RedisKeys.processingTimeSum, elapsed);
       await pipe.exec();
 
+      distriJobsCompletedTotal.inc({ job_type: job.type });
+      distriJobsProcessingDuration.observe({ job_type: job.type }, elapsed / 1000);
+
       log.info('Job completed', { jobId, type: job.type, durationMs: elapsed });
 
     } catch (err) {
       log.error('Job failed', { jobId, type: job.type, error: String(err) });
       await sharedRedis.incr(RedisKeys.jobsFailedTotal);
+      
+      const elapsed = Date.now() - startTime;
+      distriJobsProcessingDuration.observe({ job_type: job.type }, elapsed / 1000);
 
       const nextAttempt = job.attempts + 1;
 
       if (nextAttempt < job.maxAttempts) {
+        distriJobsFailedTotal.inc({ job_type: job.type, final: 'false' });
         const delay = calculateBackoff(nextAttempt);
         await updateJobFields(sharedRedis, jobId, {
           status: 'delayed',
@@ -173,6 +172,7 @@ export class WorkerPool {
         await sharedRedis.zadd(RedisKeys.delayedSet(this.queueName), Date.now() + delay, jobId);
         log.info('Job delayed for retry', { jobId, attempt: nextAttempt, maxAttempts: job.maxAttempts, delayMs: delay });
       } else {
+        distriJobsFailedTotal.inc({ job_type: job.type, final: 'true' });
         await updateJobFields(sharedRedis, jobId, {
           status: 'dead',
           attempts: nextAttempt.toString(),
@@ -182,8 +182,11 @@ export class WorkerPool {
       }
     } finally {
       clearInterval(hbTimer);
-      await sharedRedis.hdel(activeKey, jobId);
-      await sharedRedis.del(hbKey);
+      const pipe = sharedRedis.multi();
+      pipe.hdel(activeKey, jobId);
+      pipe.del(hbKey);
+      pipe.lrem(RedisKeys.processingList(this.queueName), 1, jobId);
+      await pipe.exec();
     }
   }
 }

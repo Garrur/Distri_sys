@@ -24,6 +24,7 @@ const log = createLogger('Watchdog');
  */
 export class Watchdog {
   private timer: NodeJS.Timeout | null = null;
+  private currentRun: Promise<void> | null = null;
 
   constructor(private readonly queueName: string) {}
 
@@ -31,24 +32,29 @@ export class Watchdog {
     if (this.timer) return;
     log.info('Started', { queue: this.queueName, intervalMs: config.watchdog.intervalMs });
     this.timer = setInterval(() => {
-      this.checkStalledJobs().catch((err) =>
+      this.currentRun = this.checkStalledJobs().catch((err) =>
         log.error('Stall check failed', { error: String(err) }),
       );
     }, config.watchdog.intervalMs);
   }
 
-  public stop(): void {
+  public async stop(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+      if (this.currentRun) await this.currentRun;
       log.info('Stopped');
     }
   }
 
   private async checkStalledJobs(): Promise<void> {
     const activeKey = RedisKeys.activeJobsHash(this.queueName);
+    const processList = RedisKeys.processingList(this.queueName);
+
     const activeJobs = await redis.hgetall(activeKey);
-    const jobIds = Object.keys(activeJobs);
+    const processingIds = await redis.lrange(processList, 0, -1);
+    
+    const jobIds = Array.from(new Set([...Object.keys(activeJobs), ...processingIds]));
     if (jobIds.length === 0) return;
 
     // Batch-check all heartbeats with a single MGET
@@ -61,21 +67,26 @@ export class Watchdog {
       const jobId = jobIds[i];
       log.warn('Stalled job detected', { jobId });
 
-      await redis.hdel(activeKey, jobId);
-
       const jobHash = await redis.hgetall(RedisKeys.jobHash(jobId));
-      if (!jobHash || Object.keys(jobHash).length === 0) continue;
-
-      const attempts = parseInt(jobHash.attempts, 10) + 1;
-      const priority = jobHash.priority || 'normal';
-      const targetKey = RedisKeys.waitingList(this.queueName, priority);
-
+      
       const pipe = redis.multi();
-      pipe.hmset(RedisKeys.jobHash(jobId), { attempts: attempts.toString(), status: 'waiting' });
-      pipe.lpush(targetKey, jobId);
-      await pipe.exec();
+      pipe.hdel(activeKey, jobId);
+      pipe.lrem(processList, 1, jobId);
 
-      log.info('Stalled job requeued', { jobId, attempts, priority });
+      if (jobHash && Object.keys(jobHash).length > 0) {
+        const attempts = parseInt(jobHash.attempts, 10) + 1;
+        const priority = jobHash.priority || 'normal';
+        const targetKey = RedisKeys.waitingList(this.queueName, priority);
+
+        pipe.hmset(RedisKeys.jobHash(jobId), { attempts: attempts.toString(), status: 'waiting' });
+        pipe.lpush(targetKey, jobId);
+        
+        log.info('Stalled job requeued', { jobId, attempts, priority });
+      } else {
+        log.warn('Stalled job metadata missing, cleaning up orphans', { jobId });
+      }
+
+      await pipe.exec();
     }
   }
 }

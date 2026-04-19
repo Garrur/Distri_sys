@@ -5,6 +5,7 @@ import { getJob, updateJobFields } from '../lib/redis/job-store';
 import { StatsResponse, JobListResponse, RetryResponse, Job } from '../types';
 import { JobNotFoundError, InvalidJobStatusError } from '../errors';
 import { createLogger } from '../lib/logger';
+import { distriQueueDepth, getMetrics } from './metrics';
 
 const log = createLogger('API');
 
@@ -34,13 +35,25 @@ export const jobRoutes: FastifyPluginAsync<ApiOptions> = async (fastify, { queue
     const failed    = parseInt((r[6][1] as string) || '0', 10);
     const timeSum   = parseInt((r[7][1] as string) || '0', 10);
 
+    const qHigh = r[0][1] as number;
+    const qNormal = r[1][1] as number;
+    const qLow = r[2][1] as number;
+    const qDelayed = r[3][1] as number;
+    const qDead = r[4][1] as number;
+
+    distriQueueDepth.set({ queue: 'high' }, qHigh);
+    distriQueueDepth.set({ queue: 'normal' }, qNormal);
+    distriQueueDepth.set({ queue: 'low' }, qLow);
+    distriQueueDepth.set({ queue: 'delayed' }, qDelayed);
+    distriQueueDepth.set({ queue: 'dead' }, qDead);
+
     return {
       queues: {
-        high:    r[0][1] as number,
-        normal:  r[1][1] as number,
-        low:     r[2][1] as number,
-        delayed: r[3][1] as number,
-        dead:    r[4][1] as number,
+        high:    qHigh,
+        normal:  qNormal,
+        low:     qLow,
+        delayed: qDelayed,
+        dead:    qDead,
       },
       metrics: {
         jobs_processed_total: processed,
@@ -48,6 +61,15 @@ export const jobRoutes: FastifyPluginAsync<ApiOptions> = async (fastify, { queue
         avg_processing_time_ms: processed > 0 ? timeSum / processed : 0,
       },
     };
+  });
+
+  // ── GET /metrics ──────────────────────────────────────────────────────────
+
+  fastify.get('/metrics', async (_req, reply) => {
+    reply.header('Content-Type', 'text/plain; version=0.0.4');
+    reply.header('Access-Control-Allow-Origin', '*');
+    const metrics = await getMetrics();
+    return reply.send(metrics);
   });
 
   // ── GET /jobs/:id ──────────────────────────────────────────────────────────

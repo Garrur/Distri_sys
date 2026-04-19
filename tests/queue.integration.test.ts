@@ -67,14 +67,7 @@ function waitUntil(predicate: () => Promise<boolean>, timeoutMs: number, interva
 }
 
 async function safeShutdownPool(pool: WorkerPool): Promise<void> {
-  (pool as any).isRunning = false;
-  for (const c of (pool as any).blockingClients as Redis[]) c.disconnect();
-  (pool as any).blockingClients = [];
-  await new Promise<void>((resolve) => {
-    const id = setInterval(() => {
-      if ((pool as any).runningJobCount === 0) { clearInterval(id); resolve(); }
-    }, 50);
-  });
+  await pool.shutdown();
 }
 
 // ── 1. Basic flow ────────────────────────────────────────────────────────────
@@ -88,7 +81,7 @@ describe('Basic flow', () => {
 
     const jobs: Job[] = [];
     for (let i = 0; i < 10; i++) {
-      jobs.push(await queue.enqueue('basic', { index: i }, 'normal', 3));
+      jobs.push(await queue.enqueue('basic', { index: i }, 'normal', 3) as Job);
     }
 
     await pool.start();
@@ -117,7 +110,7 @@ describe('Retry logic', () => {
       if (attemptCount < 3) throw new Error(`Deliberate failure #${attemptCount}`);
     });
 
-    const job = await queue.enqueue('retry_test', { value: 42 }, 'normal', 5);
+    const job = await queue.enqueue('retry_test', { value: 42 }, 'normal', 5) as Job;
     scheduler.start();
     await pool.start();
 
@@ -135,7 +128,7 @@ describe('Retry logic', () => {
     expect(attemptCount).toBe(3);
     expect(await testRedis.hget(RedisKeys.jobHash(job.id), 'status')).toBe('completed');
 
-    scheduler.stop();
+    await scheduler.stop();
     await safeShutdownPool(pool);
   });
 });
@@ -149,7 +142,7 @@ describe('Dead-letter queue', () => {
     const maxAttempts = 3;
 
     pool.process('always_fail', async () => { throw new Error('I always fail'); });
-    const job = await queue.enqueue('always_fail', {}, 'normal', maxAttempts);
+    const job = await queue.enqueue('always_fail', {}, 'normal', maxAttempts) as Job;
 
     scheduler.start();
     await pool.start();
@@ -166,7 +159,7 @@ describe('Dead-letter queue', () => {
     expect(await testRedis.hget(RedisKeys.jobHash(job.id), 'status')).toBe('dead');
     expect(parseInt((await testRedis.hget(RedisKeys.jobHash(job.id), 'attempts'))!, 10)).toBe(maxAttempts);
 
-    scheduler.stop();
+    await scheduler.stop();
     await safeShutdownPool(pool);
   });
 });
@@ -201,7 +194,7 @@ describe('Priority ordering', () => {
 describe('Stalled job recovery', () => {
   it('should detect a stalled job and requeue it', async () => {
     const queue = new Queue(QUEUE);
-    const job = await queue.enqueue('stall_test', { msg: 'will stall' }, 'normal', 5);
+    const job = await queue.enqueue('stall_test', { msg: 'will stall' }, 'normal', 5) as Job;
 
     // Simulate crashed worker: register active + heartbeat with short TTL, then don't renew
     await testRedis.hset(RedisKeys.jobHash(job.id), 'status', 'active');
@@ -210,7 +203,7 @@ describe('Stalled job recovery', () => {
       JSON.stringify({ workerId: 99, startedAt: Date.now(), timeout: 30000 }),
     );
     await testRedis.set(RedisKeys.heartbeat(job.id), '1', 'EX', 2);
-    await testRedis.rpop(RedisKeys.waitingList(QUEUE, 'normal'));
+    await testRedis.rpoplpush(RedisKeys.waitingList(QUEUE, 'normal'), RedisKeys.processingList(QUEUE));
 
     // Wait for heartbeat to expire
     await new Promise((r) => setTimeout(r, 3_000));
@@ -225,6 +218,6 @@ describe('Stalled job recovery', () => {
     expect(await testRedis.hget(RedisKeys.activeJobsHash(QUEUE), job.id)).toBeNull();
     expect(await testRedis.get(RedisKeys.heartbeat(job.id))).toBeNull();
 
-    watchdog.stop();
+    await watchdog.stop();
   });
 });

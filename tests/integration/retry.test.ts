@@ -5,6 +5,7 @@ import { Scheduler } from '../../src/scheduler/Scheduler';
 import { startRedisContainer, stopRedisContainer, flushRedis, getTestRedisClient } from '../helpers/setupRedis';
 import { waitFor } from '../helpers/waitFor';
 import { RedisKeys } from '../../src/lib/redis/keys';
+import { Job } from '../../src/types';
 
 const QUEUE_NAME = 'test_queue';
 
@@ -59,7 +60,7 @@ describe('Retry and DLQ Logic', () => {
       { foo: 'bar' },
       'normal',
       3
-    );
+    ) as Job;
 
     // Start WorkerPool and Scheduler (since Scheduler moves delayed jobs back to waiting)
     await workerPool.start();
@@ -96,7 +97,7 @@ describe('Retry and DLQ Logic', () => {
       { fatal: true },
       'normal',
       2
-    );
+    ) as Job;
 
     // Start WorkerPool and Scheduler
     await workerPool.start();

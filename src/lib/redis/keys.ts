@@ -13,6 +13,9 @@ export const RedisKeys = {
   waitingList: (queue: string, priority: string): string =>
     `queue:${queue}:waiting:${priority}`,
 
+  /** queue:<name>:processing — List of jobs actively being handled by workers */
+  processingList: (queue: string): string => `queue:${queue}:processing`,
+
   /** queue:<name>:delayed — Sorted set scored by due-timestamp */
   delayedSet: (queue: string): string => `queue:${queue}:delayed`,
 

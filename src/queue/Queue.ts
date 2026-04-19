@@ -4,6 +4,7 @@ import { RedisKeys } from '../lib/redis/keys';
 import { saveJob } from '../lib/redis/job-store';
 import { Job, JobPriority, PRIORITIES } from '../types';
 import { createLogger } from '../lib/logger';
+import { distriJobsEnqueuedTotal } from '../api/metrics';
 
 const log = createLogger('Queue');
 
@@ -74,6 +75,8 @@ export class Queue {
       await redis.lpush(RedisKeys.waitingList(this.queueName, priority), job.id);
     }
 
+    distriJobsEnqueuedTotal.inc({ queue: priority });
+    
     log.info('Job enqueued', { jobId: job.id, type, priority, idempotencyKey });
     return job;
   }

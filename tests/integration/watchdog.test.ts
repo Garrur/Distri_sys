@@ -19,6 +19,7 @@ import {
 } from '../helpers/setupRedis';
 import { waitFor } from '../helpers/waitFor';
 import { RedisKeys } from '../../src/lib/redis/keys';
+import { Job } from '../../src/types';
 
 const QUEUE_NAME = 'watchdog_test_queue';
 
@@ -74,7 +75,7 @@ describe('Watchdog Failover Architecture', () => {
     });
 
     // Enqueue 1 job with type "stall-test"
-    const job = await queue.enqueue('stall-test', { fail: true }, 'normal', 3);
+    const job = await queue.enqueue('stall-test', { fail: true }, 'normal', 3) as Job;
 
     // Start WorkerPool and Watchdog
     await workerPool.start();

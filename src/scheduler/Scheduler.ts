@@ -13,6 +13,7 @@ const log = createLogger('Scheduler');
  */
 export class Scheduler {
   private timer: NodeJS.Timeout | null = null;
+  private currentRun: Promise<void> | null = null;
 
   constructor(private readonly queueName: string) {}
 
@@ -20,16 +21,17 @@ export class Scheduler {
     if (this.timer) return;
     log.info('Started', { queue: this.queueName, intervalMs: config.scheduler.intervalMs });
     this.timer = setInterval(() => {
-      this.processDelayedJobs().catch((err) =>
+      this.currentRun = this.processDelayedJobs().catch((err) =>
         log.error('Delayed-job check failed', { error: String(err) }),
       );
     }, config.scheduler.intervalMs);
   }
 
-  public stop(): void {
+  public async stop(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+      if (this.currentRun) await this.currentRun;
       log.info('Stopped');
     }
   }
